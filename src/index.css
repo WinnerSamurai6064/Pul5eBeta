@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  
+  --color-app-bg: var(--app-bg);
+  --color-glass-surface: var(--glass-surface);
+  --color-glass-tint: var(--glass-tint);
+  --color-hairline: var(--hairline);
+  --color-shine: var(--shine);
+  --color-cta: var(--cta);
+  --color-cta-text: var(--cta-text);
+  --color-link-orange: var(--link-orange);
+  --color-secondary-text: var(--secondary-text);
+  --color-text-primary: var(--text-primary);
+}
+
+:root {
+  /* Light mode tokens */
+  --app-bg: #FFF3E6;
+  --glass-surface: rgba(255, 243, 230, 0.65);
+  --glass-tint: rgba(255, 106, 0, 0.06);
+  --hairline: rgba(31, 35, 40, 0.10);
+  --shine: rgba(255, 255, 255, 0.55);
+  --cta: #FF6A00;
+  --cta-text: #1F2328;
+  --link-orange: #BC4E00;
+  --secondary-text: rgba(31, 35, 40, 0.7);
+  --text-primary: #1F2328;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark mode tokens */
+    --app-bg: #0F1115;
+    --glass-surface: rgba(31, 35, 40, 0.55);
+    --glass-tint: rgba(255, 106, 0, 0.10);
+    --hairline: rgba(255, 255, 255, 0.08);
+    --shine: rgba(255, 255, 255, 0.18);
+    --cta: #FF6A00;
+    --cta-text: #1F2328;
+    --link-orange: #FF6A00;
+    --secondary-text: rgba(255, 243, 230, 0.78);
+    --text-primary: #FFF3E6;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-app-bg text-text-primary antialiased overflow-x-hidden;
+    background-image: 
+      radial-gradient(circle at 20% 20%, var(--glass-tint) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, var(--glass-tint) 0%, transparent 40%);
+  }
+}
+
+.glass {
+  background: linear-gradient(135deg, var(--glass-surface), var(--glass-tint));
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.05), inset 0 1px 1px var(--shine);
+}
+
+.glass-thick {
+  background: linear-gradient(165deg, var(--glass-surface), var(--glass-tint));
+  backdrop-filter: blur(40px);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1), inset 0 1px 2px var(--shine);
+}
+
+.liquid-glass {
+  background: linear-gradient(135deg, var(--glass-surface), var(--glass-tint));
+  backdrop-filter: blur(25px);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.3), inset 0 1px 3px var(--shine);
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+::-webkit-scrollbar {
+  width: 0px;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
