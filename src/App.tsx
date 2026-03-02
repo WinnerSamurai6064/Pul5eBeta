@@ -19,22 +19,37 @@ import {
   ArrowRight,
   ChevronRight,
   Check,
-  Camera
+  Camera,
+  Bell
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { storage } from './lib/storage';
-import { Post, User, AppConfig, Story } from './types';
+import { Post, User, AppConfig, Story, Notification } from './types';
 import { AdminPanel } from './components/AdminPanel';
+import { DEFAULT_AVATAR, DEFAULT_ERROR_IMAGE } from './lib/defaults';
 
 // --- Components ---
 
-const VerificationBadge = ({ username, size = "sm" }: { username: string; size?: "sm" | "lg" }) => {
-  if (username !== 'PUL5E') return null;
+const VerificationBadge = ({ user, size = "sm" }: { user: User; size?: "sm" | "lg" }) => {
+  if (!user.isVerified) return null;
+  
+  const type = user.verifiedType || 'blue';
+  
   const containerSize = size === "lg" ? "w-6 h-6" : "w-4 h-4";
   const iconSize = size === "lg" ? "w-4 h-4" : "w-3 h-3";
+  
+  const colorClass = {
+    blue: "bg-blue-500",
+    yellow: "bg-yellow-500",
+    green: "bg-green-500",
+    none: "bg-blue-500"
+  }[type];
+
   return (
-    <div className={cn("flex items-center justify-center bg-blue-500 rounded-full", containerSize)}>
-      <Check className={cn("text-white stroke-[4]", iconSize)} />
+    <div className={cn("flex items-center justify-center rounded-full glass border border-white/20 p-0.5", size === "lg" ? "w-8 h-8" : "w-5 h-5")}>
+      <div className={cn("flex items-center justify-center rounded-full", colorClass, containerSize)}>
+        <Check className={cn("text-white stroke-[4]", iconSize)} />
+      </div>
     </div>
   );
 };
@@ -82,13 +97,42 @@ const GlassButton = ({ children, onClick, className, active }: any) => (
   </button>
 );
 
-const PostCard = ({ post, user, onDelete, config }: { post: Post; user: User; onDelete?: (id: string) => any; config: AppConfig; key?: any; isOwnPost?: boolean }) => {
+const PostCard = ({ post, user, onDelete, onLike, onComment, onShareToStory, onSave, onViewProfile, config, currentUser, users }: { post: Post; user: User; onDelete?: (id: string) => any; onLike?: (id: string) => void; onComment?: (id: string, text: string) => void; onShareToStory?: (post: Post) => void; onSave?: (id: string) => void; onViewProfile?: (user: User) => void; config: AppConfig; key?: any; isOwnPost?: boolean; currentUser?: User | null; users: User[] }) => {
+  const [showHeart, setShowHeart] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showShareAnim, setShowShareAnim] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  
+  const isLiked = currentUser && post.likedBy?.includes(currentUser.id);
+  const isSaved = currentUser && currentUser.savedPosts?.includes(post.id);
+
+  const handleDoubleTap = () => {
+    setShowHeart(true);
+    onLike?.(post.id);
+    setTimeout(() => setShowHeart(false), 800);
+  };
+
+  const handleShare = () => {
+    setShowShareAnim(true);
+    onShareToStory?.(post);
+    setTimeout(() => setShowShareAnim(false), 1200);
+  };
+
+  const handleCommentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (commentText.trim() && onComment) {
+      onComment(post.id, commentText);
+      setCommentText('');
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="relative w-full aspect-[9/16] max-h-[80vh] rounded-[40px] overflow-hidden border-hairline transition-all duration-500 bg-black shadow-2xl"
       style={{ borderRadius: `${config.theme.borderRadius}px` }}
+      onDoubleClick={handleDoubleTap}
     >
       {/* Image Layer - Bottom */}
       <img 
@@ -98,42 +142,154 @@ const PostCard = ({ post, user, onDelete, config }: { post: Post; user: User; on
         onError={(e) => {
           const target = e.target as HTMLImageElement;
           console.error("Pul5e: Image failed to load:", target.src);
-          if (!target.src.includes('picsum.photos/seed/error')) {
-            target.src = 'https://picsum.photos/seed/error/1080/1920';
+          if (!target.src.includes('data:image/svg+xml')) {
+            target.src = DEFAULT_ERROR_IMAGE;
           }
         }}
       />
+
+      {/* Double Tap Heart Animation */}
+      <AnimatePresence>
+        {showHeart && (
+          <motion.div 
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1.5, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+          >
+            <Heart className="w-32 h-32 text-white fill-white drop-shadow-2xl" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Share to Story Animation */}
+      <AnimatePresence>
+        {showShareAnim && (
+          <motion.div 
+            initial={{ y: 50, x: -50, scale: 0.5, opacity: 0 }}
+            animate={{ y: -200, x: 200, scale: 1.5, opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+          >
+            <Send className="w-24 h-24 text-white drop-shadow-2xl" />
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Overlay Layer - Middle */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-transparent flex flex-col justify-end p-8 z-10 pointer-events-none">
         <div className="flex items-center justify-between mb-4 pointer-events-auto">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => onViewProfile?.(user)}>
             <img src={user.avatar} className="w-10 h-10 rounded-full border-2 border-cta/30" referrerPolicy="no-referrer" />
             <div>
               <div className="flex items-center gap-1">
                 <span className="font-bold text-lg text-white">{user.username}</span>
-                <VerificationBadge username={user.username} />
+                <VerificationBadge user={user} />
               </div>
-              <p className="text-white/60 text-xs">Original Audio • {post.likes} likes</p>
+              <p className="text-white/60 text-xs">
+                {post.audioUrl ? 'Custom Audio' : 'Original Audio'} • {post.likes} likes
+              </p>
             </div>
           </div>
         </div>
         
+        {post.audioUrl && (
+          <div className="mb-4 pointer-events-auto">
+            <audio controls className="w-full h-8" src={post.audioUrl}>
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        )}
+
         <p className="text-white/90 text-sm mb-4 line-clamp-3 pointer-events-auto">
-          {post.caption}
-          <span className="block mt-2 text-cta font-medium">
-            {post.hashtags.map(h => `#${h} `)}
-          </span>
+          {post.caption.split(/(#[\w]+)/g).map((part, i) => 
+            part.startsWith('#') ? (
+              <span key={i} className="text-cta font-medium">{part}</span>
+            ) : (
+              <span key={i}>{part}</span>
+            )
+          )}
         </p>
 
         <div className="flex items-center justify-between pointer-events-auto">
           <div className="flex gap-6">
-            <Heart className="w-7 h-7 text-white hover:text-cta cursor-pointer transition-colors" />
-            <MessageCircle className="w-7 h-7 text-white hover:text-cta cursor-pointer transition-colors" />
-            <Send className="w-7 h-7 text-white hover:text-cta cursor-pointer transition-colors" />
+            <div className="flex flex-col items-center gap-1">
+              <Heart 
+                onClick={() => onLike?.(post.id)}
+                className={cn(
+                  "w-7 h-7 cursor-pointer transition-colors",
+                  isLiked ? "text-red-500 fill-red-500" : "text-white hover:text-cta"
+                )} 
+              />
+              <span className="text-[10px] font-bold text-white/80">{post.likes}</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <MessageCircle 
+                onClick={() => setShowComments(!showComments)}
+                className={cn(
+                  "w-7 h-7 text-white hover:text-cta cursor-pointer transition-colors",
+                  showComments && "text-cta"
+                )} 
+              />
+              <span className="text-[10px] font-bold text-white/80">{post.comments?.length || 0}</span>
+            </div>
+            <Send 
+              onClick={handleShare}
+              className="w-7 h-7 text-white hover:text-cta cursor-pointer transition-colors" 
+            />
           </div>
-          <Bookmark className="w-7 h-7 text-white hover:text-cta cursor-pointer transition-colors" />
+          <Bookmark 
+            onClick={() => onSave?.(post.id)}
+            className={cn(
+              "w-7 h-7 cursor-pointer transition-colors",
+              isSaved ? "text-cta fill-cta" : "text-white hover:text-cta"
+            )} 
+          />
         </div>
+
+        {/* Comments Section */}
+        <AnimatePresence>
+          {showComments && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="mt-4 pointer-events-auto overflow-hidden"
+            >
+              <div className="max-h-32 overflow-y-auto mb-3 space-y-2 hide-scrollbar">
+                {post.comments?.map(comment => {
+                  const commentUser = users.find(u => u.id === comment.userId);
+                  return (
+                    <div key={comment.id} className="text-sm flex gap-2 items-start">
+                      <span 
+                        className="font-bold text-white whitespace-nowrap cursor-pointer hover:underline"
+                        onClick={() => commentUser && onViewProfile?.(commentUser)}
+                      >
+                        {commentUser?.username || 'User'}
+                      </span>
+                      <span className="text-white/80 break-words flex-1">{comment.text}</span>
+                    </div>
+                  );
+                })}
+                {(!post.comments || post.comments.length === 0) && (
+                  <p className="text-white/50 text-xs italic">No comments yet. Be the first!</p>
+                )}
+              </div>
+              <form onSubmit={handleCommentSubmit} className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  maxLength={140}
+                  placeholder="Add a comment... (max 140 chars)" 
+                  className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cta"
+                />
+                <button type="submit" disabled={!commentText.trim()} className="text-cta font-bold text-sm px-2 disabled:opacity-50">Post</button>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Action Layer - Top */}
@@ -161,9 +317,12 @@ function MainApp() {
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState<'landing' | 'signup' | 'app'>('landing');
   const [activeTab, setActiveTab] = useState('home');
+  const [profileTab, setProfileTab] = useState<'posts' | 'saved'>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchTab, setSearchTab] = useState<'users' | 'tags'>('users');
   const [isPrivate, setIsPrivate] = useState(false);
   const [config, setConfig] = useState<AppConfig>(storage.getConfig());
   const [stories, setStories] = useState<Story[]>([]);
@@ -173,6 +332,7 @@ function MainApp() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [newCaption, setNewCaption] = useState('');
+  const [newAudioUrl, setNewAudioUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
   // Story State
@@ -186,6 +346,7 @@ function MainApp() {
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [editAudioUrl, setEditAudioUrl] = useState('');
   const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
@@ -200,6 +361,7 @@ function MainApp() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -242,26 +404,14 @@ function MainApp() {
     }
     setError('');
     
-    // Admin check
-    if (username.toLowerCase() === 'pul5e' && password === 'admin') {
-      const admin = await storage.getUser('PUL5E');
-      if (admin) {
-        setCurrentUser(admin);
-        storage.setCurrentUser(admin);
-        setView('app');
-        setIsPrivate(admin.isPrivate);
-        return;
-      }
-    }
-
-    const user = await storage.getUser(username);
+    const user = await storage.login(username, password);
     if (user) {
       setCurrentUser(user);
       storage.setCurrentUser(user);
       setView('app');
       setIsPrivate(user.isPrivate);
     } else {
-      setError('User not found. Please sign up.');
+      setError('Invalid username or password.');
     }
   };
 
@@ -271,7 +421,7 @@ function MainApp() {
       setError('Registration is currently disabled by administrator.');
       return;
     }
-    if (!username || !displayName) {
+    if (!username || !displayName || !password) {
       setError('Please fill all fields');
       return;
     }
@@ -280,10 +430,38 @@ function MainApp() {
       setError('Username already taken');
       return;
     }
-    const newUser = await storage.signup(username, displayName);
+    const newUser = await storage.signup(username, displayName, password);
     setCurrentUser(newUser);
     storage.setCurrentUser(newUser);
     setView('app');
+  };
+
+  const handleViewProfile = (user: User) => {
+    setSelectedUser(user);
+    setActiveTab('profile');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleFollow = async (targetUserId: string) => {
+    if (!currentUser) return;
+    if (currentUser.id === targetUserId) return;
+
+    await storage.followUser(currentUser.id, targetUserId);
+    
+    // Update local state
+    const updatedUsers = await storage.getUsers();
+    setUsers(updatedUsers);
+    
+    const updatedCurrentUser = updatedUsers.find(u => u.id === currentUser.id);
+    if (updatedCurrentUser) {
+      setCurrentUser(updatedCurrentUser);
+      storage.setCurrentUser(updatedCurrentUser);
+    }
+
+    if (selectedUser && selectedUser.id === targetUserId) {
+      const updatedSelectedUser = updatedUsers.find(u => u.id === targetUserId);
+      if (updatedSelectedUser) setSelectedUser(updatedSelectedUser);
+    }
   };
 
   const handleUpdateProfile = async () => {
@@ -300,11 +478,13 @@ function MainApp() {
         ...currentUser,
         displayName: editDisplayName,
         bio: editBio,
+        audioUrl: editAudioUrl,
         avatar: avatarUrl
       };
       
       await storage.updateUser(updatedUser);
       setCurrentUser(updatedUser);
+      setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
       setIsEditProfileModalOpen(false);
       setEditAvatarFile(null);
     } catch (err) {
@@ -318,7 +498,7 @@ function MainApp() {
     if (!currentUser || !selectedStoryFile) return;
     setIsUploadingStory(true);
     try {
-      const { url, publicId } = await storage.uploadImage(selectedStoryFile);
+      const { url, publicId } = await storage.uploadImage(selectedStoryFile, undefined, currentUser.id, 'story');
       const newStory = await storage.createStory({
         userId: currentUser.id,
         imageUrl: url,
@@ -339,20 +519,24 @@ function MainApp() {
     
     setIsUploading(true);
     try {
-      const { url, publicId } = await storage.uploadImage(selectedFile);
+      const { url, publicId } = await storage.uploadImage(selectedFile, newCaption, currentUser.id, 'post');
+      
+      const extractedHashtags = newCaption.match(/#[\w]+/g)?.map(tag => tag.slice(1)) || [];
       
       const newPost = await storage.createPost({
         userId: currentUser.id,
         imageUrl: url,
         publicId,
         caption: newCaption,
-        hashtags: ['Pul5e', 'socialmedia', 'trending', 'valentines', 'March', 'Pul5ebeta']
+        hashtags: extractedHashtags,
+        audioUrl: newAudioUrl || undefined
       });
       
       setPosts([newPost, ...posts]);
       setIsCreateModalOpen(false);
       setSelectedFile(null);
       setNewCaption('');
+      setNewAudioUrl('');
     } catch (err) {
       console.error('Upload failed:', err);
     } finally {
@@ -382,6 +566,107 @@ function MainApp() {
       setIsStoryModalOpen(false);
     }
     setDeleteConfirmId(null);
+  };
+
+  const handleLikePost = async (postId: string) => {
+    if (!currentUser) return;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const likedBy = post.likedBy || [];
+    const isLiked = likedBy.includes(currentUser.id);
+    
+    const updatedLikedBy = isLiked 
+      ? likedBy.filter(id => id !== currentUser.id)
+      : [...likedBy, currentUser.id];
+      
+    const updatedPost = { 
+      ...post, 
+      likes: isLiked ? Math.max(0, post.likes - 1) : post.likes + 1,
+      likedBy: updatedLikedBy
+    };
+    
+    await storage.updatePost(updatedPost);
+    setPosts(posts.map(p => p.id === postId ? updatedPost : p));
+
+    if (!isLiked && post.userId !== currentUser.id) {
+      const newNotification = await storage.addNotification({
+        userId: post.userId,
+        actorId: currentUser.id,
+        type: 'like',
+        postId: post.id
+      });
+      setNotifications(prev => [newNotification, ...prev]);
+    }
+  };
+
+  const handleSavePost = async (postId: string) => {
+    if (!currentUser) return;
+    
+    const savedPosts = currentUser.savedPosts || [];
+    const isSaved = savedPosts.includes(postId);
+    
+    const updatedSavedPosts = isSaved
+      ? savedPosts.filter(id => id !== postId)
+      : [...savedPosts, postId];
+      
+    const updatedUser = {
+      ...currentUser,
+      savedPosts: updatedSavedPosts
+    };
+    
+    await storage.updateUser(updatedUser);
+    setCurrentUser(updatedUser);
+    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+  };
+
+  const handleCommentPost = async (postId: string, text: string) => {
+    if (!currentUser) return;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    const newComment = {
+      id: Math.random().toString(36).substr(2, 9),
+      userId: currentUser.id,
+      text,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedPost = { 
+      ...post, 
+      comments: [...(post.comments || []), newComment] 
+    };
+    
+    await storage.updatePost(updatedPost);
+    setPosts(posts.map(p => p.id === postId ? updatedPost : p));
+
+    if (post.userId !== currentUser.id) {
+      const newNotification = await storage.addNotification({
+        userId: post.userId,
+        actorId: currentUser.id,
+        type: 'comment',
+        postId: post.id
+      });
+      setNotifications(prev => [newNotification, ...prev]);
+    }
+  };
+
+  const handleShareToStory = async (post: Post) => {
+    if (!currentUser) return;
+    setIsUploadingStory(true);
+    try {
+      const newStory = await storage.createStory({
+        userId: currentUser.id,
+        imageUrl: post.imageUrl,
+        publicId: post.publicId
+      });
+      setStories([newStory, ...stories]);
+      alert('Post shared to your story!');
+    } catch (err) {
+      console.error('Failed to share to story:', err);
+    } finally {
+      setIsUploadingStory(false);
+    }
   };
 
   const togglePrivate = async () => {
@@ -459,18 +744,16 @@ function MainApp() {
                 </div>
               )}
 
-              {view === 'landing' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-secondary-text ml-2">Password</label>
-                  <input 
-                    type="password" 
-                    className="w-full glass p-4 rounded-2xl outline-none focus:ring-2 ring-cta/20 transition-all"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-              )}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-secondary-text ml-2">Password</label>
+                <input 
+                  type="password" 
+                  className="w-full glass p-4 rounded-2xl outline-none focus:ring-2 ring-cta/20 transition-all"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
 
               {error && <p className="text-red-500 text-sm ml-2 font-medium">{error}</p>}
 
@@ -514,10 +797,29 @@ function MainApp() {
           <h1 className="text-2xl font-black tracking-tighter italic text-cta">
             PUL5E
           </h1>
+          
           <div className="flex items-center gap-4">
+            {/* Notification Bell Neatly Placed */}
+            <GlassButton 
+              active={activeTab === 'notifications'} 
+              onClick={() => {
+                setActiveTab('notifications');
+                if (currentUser) {
+                  storage.markNotificationsRead(currentUser.id);
+                  setNotifications(notifications.map(n => ({ ...n, read: true })));
+                }
+              }} 
+              className="relative p-2 rounded-full hover:bg-white/5 transition-all"
+            >
+              <Bell className="w-5 h-5" />
+              {notifications.some(n => !n.read) && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-cta rounded-full"></span>
+              )}
+            </GlassButton>
+
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold">{currentUser?.username}</span>
-              <VerificationBadge username={currentUser?.username || ''} />
+              {currentUser && <VerificationBadge user={currentUser} />}
             </div>
           </div>
         </div>
@@ -552,7 +854,7 @@ function MainApp() {
                 {stories.map(story => {
                   const storyUser = users.find(u => u.id === story.userId) || { 
                     username: 'User', 
-                    avatar: `https://picsum.photos/seed/${story.userId}/200` 
+                    avatar: DEFAULT_AVATAR 
                   };
                   return (
                     <button 
@@ -583,10 +885,17 @@ function MainApp() {
                     post={post} 
                     config={config}
                     isOwnPost={currentUser?.id === post.userId}
+                    currentUser={currentUser}
+                    users={users}
+                    onLike={handleLikePost}
+                    onComment={handleCommentPost}
+                    onShareToStory={handleShareToStory}
+                    onSave={handleSavePost}
+                    onViewProfile={handleViewProfile}
                     user={users.find(u => u.id === post.userId) || { 
                       id: 'anon', 
                       username: 'Anonymous', 
-                      avatar: 'https://picsum.photos/seed/anon/200',
+                      avatar: DEFAULT_AVATAR,
                       isVerified: false 
                     } as any} 
                     onDelete={currentUser?.id === post.userId ? handleDeletePost : undefined}
@@ -612,24 +921,168 @@ function MainApp() {
                 <Search className="w-5 h-5 ml-3 text-secondary-text" />
                 <input 
                   type="text" 
-                  placeholder="Search hashtags or pulses..." 
+                  placeholder="Search users or hashtags..." 
                   className="bg-transparent border-none outline-none flex-1 py-2 text-sm text-text-primary placeholder:text-secondary-text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                {['#glass', '#future', '#pul5e', '#liquid', '#design', '#vibes'].map(tag => (
-                  <div 
-                    key={tag}
-                    onClick={() => setSearchQuery(tag.replace('#', ''))}
-                    className="glass p-4 rounded-2xl cursor-pointer hover:bg-cta/10 hover:border-cta/30 transition-all text-center font-bold text-secondary-text hover:text-cta"
-                  >
-                    {tag}
-                  </div>
-                ))}
+
+              <div className="flex justify-center gap-4 border-b border-hairline pb-4">
+                <button 
+                  onClick={() => setSearchTab('users')}
+                  className={cn("text-sm font-bold uppercase tracking-widest transition-colors", searchTab === 'users' ? "text-white" : "text-white/50")}
+                >
+                  Users
+                </button>
+                <button 
+                  onClick={() => setSearchTab('tags')}
+                  className={cn("text-sm font-bold uppercase tracking-widest transition-colors", searchTab === 'tags' ? "text-white" : "text-white/50")}
+                >
+                  Tags
+                </button>
               </div>
+              
+              {searchQuery || searchTab === 'users' ? (
+                <div className="space-y-4">
+                  {searchTab === 'users' ? (
+                    users.filter(u => 
+                      !searchQuery || 
+                      u.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                      u.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+                    ).length > 0 ? (
+                      users.filter(u => 
+                        !searchQuery || 
+                        u.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        u.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+                      ).map(user => (
+                        <div key={user.id} className="flex items-center justify-between p-4 glass rounded-2xl cursor-pointer hover:bg-white/5 transition-colors group">
+                          <div className="flex items-center gap-4" onClick={() => handleViewProfile(user)}>
+                            <img src={user.avatar} className="w-12 h-12 rounded-full object-cover" />
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <span className="font-bold text-white">{user.username}</span>
+                                <VerificationBadge user={user} />
+                              </div>
+                              <span className="text-sm text-secondary-text">{user.displayName}</span>
+                            </div>
+                          </div>
+                          {currentUser && currentUser.id !== user.id && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleFollow(user.id);
+                              }}
+                              className={cn(
+                                "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
+                                currentUser.following?.includes(user.id) 
+                                  ? "glass border-hairline text-white/50" 
+                                  : "bg-cta text-cta-text"
+                              )}
+                            >
+                              {currentUser.following?.includes(user.id) ? 'Following' : 'Follow'}
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-10 text-secondary-text">No users found</div>
+                    )
+                  ) : (
+                    posts.filter(p => p.hashtags.some(h => h.toLowerCase().includes(searchQuery.replace('#', '').toLowerCase()))).length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {posts.filter(p => p.hashtags.some(h => h.toLowerCase().includes(searchQuery.replace('#', '').toLowerCase()))).map(post => (
+                          <div key={post.id} className="aspect-square glass rounded-2xl overflow-hidden cursor-pointer hover:opacity-80 transition-all border-hairline">
+                            <img 
+                              src={post.imageUrl} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = DEFAULT_ERROR_IMAGE;
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 text-secondary-text">No posts found with this hashtag</div>
+                    )
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {Array.from(new Set(posts.flatMap(p => p.hashtags))).slice(0, 6).map(tag => (
+                    <div 
+                      key={tag}
+                      onClick={() => {
+                        setSearchTab('tags');
+                        setSearchQuery(tag);
+                      }}
+                      className="glass p-4 rounded-2xl cursor-pointer hover:bg-cta/10 hover:border-cta/30 transition-all text-center font-bold text-secondary-text hover:text-cta"
+                    >
+                      #{tag}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <motion.div 
+              key="notifications"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="space-y-4"
+            >
+              <h2 className="text-xl font-black italic mb-6">Notifications</h2>
+              
+              {notifications.length > 0 ? (
+                notifications.map(notification => {
+                  const actor = users.find(u => u.id === notification.actorId);
+                  const post = notification.postId ? posts.find(p => p.id === notification.postId) : null;
+                  if (!actor) return null;
+
+                  return (
+                    <div key={notification.id} className="flex items-center gap-4 p-4 glass rounded-2xl">
+                      <img 
+                        src={actor.avatar} 
+                        className="w-12 h-12 rounded-full object-cover cursor-pointer" 
+                        onClick={() => handleViewProfile(actor)}
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm">
+                          <span className="font-bold cursor-pointer" onClick={() => handleViewProfile(actor)}>{actor.username}</span>
+                          {notification.type === 'like' ? ' liked your pulse.' : 
+                           notification.type === 'comment' ? ' commented on your pulse.' : 
+                           ' started following you.'}
+                        </p>
+                        <p className="text-xs text-secondary-text mt-1">
+                          {new Date(notification.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      {post && <img src={post.imageUrl} className="w-12 h-12 rounded-xl object-cover" />}
+                      {notification.type === 'follow' && (
+                        <button 
+                          onClick={() => handleFollow(actor.id)}
+                          className={cn(
+                            "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
+                            currentUser?.following?.includes(actor.id) 
+                              ? "glass border-hairline text-white/50" 
+                              : "bg-cta text-cta-text"
+                          )}
+                        >
+                          {currentUser?.following?.includes(actor.id) ? 'Following' : 'Follow'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-20 text-secondary-text">
+                  <Bell className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p>No notifications yet.</p>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -640,60 +1093,120 @@ function MainApp() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-8"
             >
-              {currentUser && (
+              {(selectedUser || currentUser) && (
                 <>
                   <div className="flex flex-col items-center text-center space-y-4">
                     <div className="relative">
-                      <img src={currentUser.avatar} className="w-28 h-28 rounded-full border-4 border-cta/20 p-1" referrerPolicy="no-referrer" />
-                      {currentUser.username === 'PUL5E' && (
+                      <img src={(selectedUser || currentUser)?.avatar} className="w-28 h-28 rounded-full border-4 border-cta/20 p-1" referrerPolicy="no-referrer" />
+                      {(selectedUser || currentUser)?.isVerified && (
                         <div className="absolute bottom-1 right-1 bg-app-bg rounded-full p-0.5">
-                          <VerificationBadge username={currentUser.username} size="lg" />
+                          <VerificationBadge user={(selectedUser || currentUser)!} size="lg" />
                         </div>
                       )}
                     </div>
                     <div>
-                      <h2 className="text-3xl font-black italic">{currentUser.displayName}</h2>
-                      <p className="text-secondary-text font-medium">@{currentUser.username}</p>
+                      <h2 className="text-3xl font-black italic">{(selectedUser || currentUser)?.displayName}</h2>
+                      <p className="text-secondary-text font-medium">@{(selectedUser || currentUser)?.username}</p>
                     </div>
-                    <p className="text-sm max-w-xs text-secondary-text">{currentUser.bio}</p>
+                    <p className="text-sm max-w-xs text-secondary-text">{(selectedUser || currentUser)?.bio}</p>
                     
-                    {config.mechanics.enableProfileEditing && (
-                      <button 
-                        onClick={() => {
-                          setEditDisplayName(currentUser.displayName);
-                          setEditBio(currentUser.bio);
-                          setIsEditProfileModalOpen(true);
-                        }}
-                        className="px-6 py-2 glass rounded-full text-xs font-bold hover:bg-white/10 transition-all border-hairline"
-                      >
-                        Edit Profile
-                      </button>
+                    {(selectedUser || currentUser)?.audioUrl && (
+                      <div className="w-full max-w-xs mt-2">
+                        <audio controls className="w-full h-10 rounded-full outline-none" src={(selectedUser || currentUser)?.audioUrl} />
+                      </div>
                     )}
+                    
+                    <div className="flex gap-3">
+                      {(!selectedUser || selectedUser.id === currentUser?.id) ? (
+                        config.mechanics.enableProfileEditing && (
+                          <button 
+                            onClick={() => {
+                              if (currentUser) {
+                                setEditDisplayName(currentUser.displayName);
+                                setEditBio(currentUser.bio);
+                                setEditAudioUrl(currentUser.audioUrl || '');
+                                setIsEditProfileModalOpen(true);
+                              }
+                            }}
+                            className="px-6 py-2 glass rounded-full text-xs font-bold hover:bg-white/10 transition-all border-hairline"
+                          >
+                            Edit Profile
+                          </button>
+                        )
+                      ) : (
+                        <button 
+                          onClick={() => selectedUser && handleFollow(selectedUser.id)}
+                          className={cn(
+                            "px-8 py-2 rounded-full text-xs font-bold transition-all shadow-lg",
+                            currentUser?.following?.includes(selectedUser.id) 
+                              ? "glass border-hairline text-white/50" 
+                              : "bg-cta text-cta-text shadow-cta/20"
+                          )}
+                        >
+                          {currentUser?.following?.includes(selectedUser.id) ? 'Following' : 'Follow'}
+                        </button>
+                      )}
+
+                      {selectedUser && selectedUser.id !== currentUser?.id && (
+                        <button 
+                          onClick={() => setSelectedUser(null)}
+                          className="px-6 py-2 glass rounded-full text-xs font-bold hover:bg-white/10 transition-all border-hairline"
+                        >
+                          My Profile
+                        </button>
+                      )}
+                    </div>
                     
                     <div className="flex gap-8 py-6 border-y border-hairline w-full justify-center">
                       <div className="text-center">
-                        <div className="font-black text-xl">{posts.filter(p => p.userId === currentUser.id).length}</div>
+                        <div className="font-black text-xl">{posts.filter(p => p.userId === (selectedUser || currentUser)?.id).length}</div>
                         <div className="text-[10px] uppercase tracking-widest font-bold text-secondary-text">Pulses</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-black text-xl">{currentUser.followersCount.toLocaleString()}</div>
+                        <div className="font-black text-xl">{(selectedUser || currentUser)?.followersCount.toLocaleString()}</div>
                         <div className="text-[10px] uppercase tracking-widest font-bold text-secondary-text">Followers</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-black text-xl">{currentUser.followingCount}</div>
+                        <div className="font-black text-xl">{(selectedUser || currentUser)?.followingCount}</div>
                         <div className="text-[10px] uppercase tracking-widest font-bold text-secondary-text">Following</div>
                       </div>
                     </div>
                   </div>
 
+                  <div className="flex justify-center gap-4 border-b border-hairline pb-4">
+                    <button 
+                      onClick={() => setProfileTab('posts')}
+                      className={cn("text-sm font-bold uppercase tracking-widest transition-colors", profileTab === 'posts' ? "text-white" : "text-white/50")}
+                    >
+                      Posts
+                    </button>
+                    <button 
+                      onClick={() => setProfileTab('saved')}
+                      className={cn("text-sm font-bold uppercase tracking-widest transition-colors", profileTab === 'saved' ? "text-white" : "text-white/50")}
+                    >
+                      Saved
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-3 gap-2">
-                    {posts.filter(p => p.userId === currentUser.id).map(post => (
+                    {profileTab === 'posts' && posts.filter(p => p.userId === (selectedUser || currentUser)?.id).map(post => (
                       <div key={post.id} className="aspect-square glass rounded-2xl overflow-hidden cursor-pointer hover:opacity-80 transition-all border-hairline">
                         <img 
                           src={post.imageUrl} 
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/error/400';
+                            (e.target as HTMLImageElement).src = DEFAULT_ERROR_IMAGE;
+                          }}
+                        />
+                      </div>
+                    ))}
+                    {profileTab === 'saved' && posts.filter(p => (selectedUser || currentUser)?.savedPosts?.includes(p.id)).map(post => (
+                      <div key={post.id} className="aspect-square glass rounded-2xl overflow-hidden cursor-pointer hover:opacity-80 transition-all border-hairline">
+                        <img 
+                          src={post.imageUrl} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = DEFAULT_ERROR_IMAGE;
                           }}
                         />
                       </div>
@@ -714,45 +1227,47 @@ function MainApp() {
               <h2 className="text-2xl font-black italic mb-6">Settings</h2>
               
               <div className="space-y-3">
-                <div className="glass p-5 rounded-[25px] flex flex-col gap-4 border-hairline">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-emerald-500/10">
-                        <Zap className="w-5 h-5 text-emerald-500" />
+                {currentUser?.username === 'PUL5E' && (
+                  <div className="glass p-5 rounded-[25px] flex flex-col gap-4 border-hairline">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-emerald-500/10">
+                          <Zap className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <span className="font-bold">System Diagnostics</span>
                       </div>
-                      <span className="font-bold">System Diagnostics</span>
+                      <button 
+                        onClick={async () => setSystemStatus(await storage.getConnectionStatus())}
+                        className="text-xs font-bold text-cta hover:underline"
+                      >
+                        Check Status
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => setSystemStatus(storage.getConnectionStatus())}
-                      className="text-xs font-bold text-cta hover:underline"
-                    >
-                      Check Status
-                    </button>
+                    
+                    {systemStatus && (
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-hairline">
+                        <div className="flex items-center gap-2">
+                          <div className={cn("w-2 h-2 rounded-full", systemStatus.supabase ? "bg-emerald-500" : "bg-red-500")} />
+                          <span className="text-[10px] font-bold uppercase text-secondary-text">Supabase</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className={cn("w-2 h-2 rounded-full", systemStatus.cloudinary ? "bg-emerald-500" : "bg-red-500")} />
+                          <span className="text-[10px] font-bold uppercase text-secondary-text">Cloudinary</span>
+                        </div>
+                        {!systemStatus.supabase && (
+                          <p className="col-span-2 text-[9px] text-red-500/60 leading-tight">
+                            * Supabase keys missing in .env. Falling back to LocalStorage.
+                          </p>
+                        )}
+                        {!systemStatus.cloudinary && (
+                          <p className="col-span-2 text-[9px] text-red-500/60 leading-tight">
+                            * Cloudinary keys missing. Images stored as local Base64.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  
-                  {systemStatus && (
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-hairline">
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", systemStatus.supabase ? "bg-emerald-500" : "bg-red-500")} />
-                        <span className="text-[10px] font-bold uppercase text-secondary-text">Supabase</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", systemStatus.cloudinary ? "bg-emerald-500" : "bg-red-500")} />
-                        <span className="text-[10px] font-bold uppercase text-secondary-text">Cloudinary</span>
-                      </div>
-                      {!systemStatus.supabase && (
-                        <p className="col-span-2 text-[9px] text-red-500/60 leading-tight">
-                          * Supabase keys missing in .env. Falling back to LocalStorage.
-                        </p>
-                      )}
-                      {!systemStatus.cloudinary && (
-                        <p className="col-span-2 text-[9px] text-red-500/60 leading-tight">
-                          * Cloudinary keys missing. Images stored as local Base64.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                )}
 
                 <div className="glass p-5 rounded-[25px] flex items-center justify-between border-hairline">
                   <div className="flex items-center gap-3">
@@ -775,20 +1290,22 @@ function MainApp() {
                   </button>
                 </div>
 
-                <div className="glass p-5 rounded-[25px] flex items-center justify-between border-hairline">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-cta/10 text-cta">
-                      <Settings className="w-5 h-5" />
+                {currentUser?.username === 'PUL5E' && (
+                  <div className="glass p-5 rounded-[25px] flex items-center justify-between border-hairline">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-cta/10 text-cta">
+                        <Settings className="w-5 h-5" />
+                      </div>
+                      <span className="font-bold">Admin C-Panel</span>
                     </div>
-                    <span className="font-bold">Admin C-Panel</span>
+                    <button 
+                      onClick={() => window.location.href = '/admin'}
+                      className="px-4 py-2 glass rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-cta/10 hover:text-cta transition-all"
+                    >
+                      Open Panel
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => window.location.href = '/admin'}
-                    className="px-4 py-2 glass rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-cta/10 hover:text-cta transition-all"
-                  >
-                    Open Panel
-                  </button>
-                </div>
+                )}
 
                 <div className="glass p-5 rounded-[25px] flex items-center justify-between text-red-500 hover:bg-red-500/10 cursor-pointer transition-all border-hairline" onClick={handleDeleteAccount}>
                   <div className="flex items-center gap-3">
@@ -824,10 +1341,13 @@ function MainApp() {
               <Search className="w-6 h-6" />
             </GlassButton>
           )}
-          <GlassButton className="bg-cta text-cta-text shadow-lg shadow-cta/20" onClick={() => setIsCreateModalOpen(true)}>
+          <GlassButton className="bg-cta text-cta-text" onClick={() => setIsCreateModalOpen(true)}>
             <PlusSquare className="w-6 h-6" />
           </GlassButton>
-          <GlassButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')}>
+          <GlassButton active={activeTab === 'profile'} onClick={() => {
+            setSelectedUser(null);
+            setActiveTab('profile');
+          }}>
             <UserIcon className="w-6 h-6" />
           </GlassButton>
           <GlassButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')}>
@@ -946,9 +1466,18 @@ function MainApp() {
               <img src={selectedStory.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               
               <div className="absolute top-0 left-0 right-0 p-6 bg-gradient-to-b from-black/60 to-transparent flex items-center justify-between">
-                <div className="flex items-center gap-3">
+                <div 
+                  className="flex items-center gap-3 cursor-pointer" 
+                  onClick={() => {
+                    const user = users.find(u => u.id === selectedStory.userId);
+                    if (user) {
+                      handleViewProfile(user);
+                      setIsStoryModalOpen(false);
+                    }
+                  }}
+                >
                   <img 
-                    src={users.find(u => u.id === selectedStory.userId)?.avatar || `https://picsum.photos/seed/${selectedStory.userId}/200`} 
+                    src={users.find(u => u.id === selectedStory.userId)?.avatar || DEFAULT_AVATAR} 
                     className="w-10 h-10 rounded-full border-2 border-white/30" 
                   />
                   <div>
@@ -956,7 +1485,9 @@ function MainApp() {
                       <span className="font-bold text-white">
                         {users.find(u => u.id === selectedStory.userId)?.username || 'User'}
                       </span>
-                      <VerificationBadge username={users.find(u => u.id === selectedStory.userId)?.username || ''} />
+                      {users.find(u => u.id === selectedStory.userId) && (
+                        <VerificationBadge user={users.find(u => u.id === selectedStory.userId)!} />
+                      )}
                     </div>
                     <p className="text-white/60 text-[10px] uppercase font-bold">
                       {new Date(selectedStory.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1055,6 +1586,19 @@ function MainApp() {
                     onChange={(e) => setNewCaption(e.target.value)}
                   />
                 </div>
+
+                {currentUser?.isAdmin && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-secondary-text ml-2">Audio Link (Admin Only)</label>
+                    <input 
+                      type="url"
+                      className="w-full glass p-4 rounded-2xl outline-none focus:ring-2 ring-cta/20 transition-all text-sm"
+                      placeholder="https://example.com/audio.mp3"
+                      value={newAudioUrl}
+                      onChange={(e) => setNewAudioUrl(e.target.value)}
+                    />
+                  </div>
+                )}
                 
                 <button 
                   onClick={handleCreatePost}
@@ -1141,6 +1685,19 @@ function MainApp() {
                     onChange={(e) => setEditBio(e.target.value)}
                   />
                 </div>
+
+                {currentUser?.username === 'PUL5E' && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-secondary-text ml-2">Profile Audio URL (Admin Only)</label>
+                    <input 
+                      type="url" 
+                      placeholder="https://example.com/audio.mp3"
+                      className="w-full glass p-4 rounded-2xl outline-none focus:ring-2 ring-cta/20 transition-all text-sm"
+                      value={editAudioUrl}
+                      onChange={(e) => setEditAudioUrl(e.target.value)}
+                    />
+                  </div>
+                )}
                 
                 <button 
                   onClick={handleUpdateProfile}

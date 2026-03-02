@@ -8,7 +8,31 @@ export interface User {
   isPrivate: boolean;
   followersCount: number;
   followingCount: number;
+  followers?: string[];
+  following?: string[];
   postsCount: number;
+  password?: string;
+  audioUrl?: string;
+  savedPosts?: string[];
+  verifiedType?: 'blue' | 'yellow' | 'green' | 'none';
+  isAdmin?: boolean;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  actorId: string;
+  type: 'like' | 'comment' | 'follow';
+  postId?: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface Comment {
+  id: string;
+  userId: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface Post {
@@ -18,8 +42,11 @@ export interface Post {
   caption: string;
   createdAt: string;
   likes: number;
+  likedBy?: string[];
   hashtags: string[];
   publicId?: string;
+  comments?: Comment[];
+  audioUrl?: string;
 }
 
 export interface Story {
